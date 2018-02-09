@@ -9,6 +9,7 @@ const float MAX_DIST = 40.0;
 const float DIFF_THRES = 15.0;
 const float MAX_DIAMETER = 1.5;
 
+//Uses law of cosines.
 float computeDiameter(float side1, float side2, float angle) {
 	return sqrt(pow(side1, 2.0) + pow(side2, 2.0) - 2.0 * side1 * side2 * cos(angle));
 }
@@ -88,11 +89,11 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
 			float angle = msg->angle_increment * (featureIndex - i);
 			float diameter = computeDiameter(ranges[featureIndex], i, angle);
 			if (diff > DIFF_THRES) {
-				float theta1 = msg->angle_increment * ((featureIndex - (signed long int) ranges.size()) / 2.0);
-				float theta2 = msg->angle_increment * ((i - (signed long int) ranges.size()) / 2);
+				float theta1 = msg->angle_min + (msg->angle_increment * featureIndex);
+				float theta2 = msg->angle_min + (msg->angle_increment * i);
 				Feature feature(theta1, ranges[featureIndex], theta2, ranges[i]);
-				//ROS_INFO("Created feature with Theta1: %f, Range1: %f, Theta2: %f, Range2: %f", 
-					//theta1, ranges[featureIndex], theta2, ranges[i]);
+				ROS_INFO("Created feature with Theta1: %f, Range1: %f, Theta2: %f, Range2: %f", 
+					theta1, ranges[featureIndex], theta2, ranges[i]);
 				features_map.push_back(feature);
 				featureIndex = -1;
 				lookForNegativePeak = true;				
@@ -129,7 +130,7 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
     		marker.color.a = 1.0;
 		marker.lifetime = ros::Duration();
 		feature_pub.publish(marker);
-		ROS_INFO("I published a marker at (%f, %f)", features_map[i].getFeatureX(), features_map[i].getFeatureY());
+		//ROS_INFO("I published a marker at (%f, %f)", features_map[i].getFeatureX(), features_map[i].getFeatureY());
 	}
 
   	
