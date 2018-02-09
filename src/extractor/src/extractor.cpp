@@ -24,8 +24,6 @@ class Feature {
 		float featureX;
 		float featureY;
 	public:
-		int a;
-		int b;
 		Feature(float, float, float, float);
 		float getFeatureX();
 		float getFeatureY();
