@@ -6,8 +6,8 @@
 #include "math.h"
 
 const float MAX_DIST = 40.0;
-const float DIFF_THRES = 15.0;
-const float MAX_DIAMETER = 1.5;
+const float DIFF_THRES = 3.0;
+const float MAX_DIAMETER = 2.0;
 
 //Uses law of cosines.
 float computeDiameter(float side1, float side2, float angle) {
@@ -33,9 +33,9 @@ Feature::Feature(float theta1, float range1, float theta2, float range2) : theta
 	diameter = computeDiameter(range1, range2, theta2 - theta1);
 
 	float x1 = range1 * cos(theta1);
-	float y1 = range1 * sin(theta1);
+	float y1 = range1 * sin(theta1); // Coordinates seem to be reflected over x-axis?
 	float x2 = range2 * cos(theta2);
-	float y2 = range2 * sin(theta2);
+	float y2 = range2 * sin(theta2); // Coordinates seem to be reflected over x-axis?
 	featureX = (x1 + x2) / 2.0;
 	featureY = (y1 + y2) / 2.0;
 }
@@ -78,6 +78,7 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
 	bool lookForNegativePeak = true;
 	for (int i = 0; i < ranges.size() - 1; i++) {
 		float diff = ranges[i + 1] - ranges[i];
+		//ROS_INFO("Diff: %f", diff);
 		if (lookForNegativePeak) {
 			if (diff < -1 * DIFF_THRES) {
 				featureIndex = i + 1;
@@ -85,8 +86,12 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
 			}
 		} else {
 			float angle = msg->angle_increment * (featureIndex - i);
-			float diameter = computeDiameter(ranges[featureIndex], i, angle);
-			if (diff > DIFF_THRES) {
+			float diameter = computeDiameter(ranges[featureIndex], ranges[i], angle);
+			if (diameter > MAX_DIAMETER || ranges[i] < 1.0) {
+				featureIndex = -1;
+				lookForNegativePeak = true;
+			} else if (diff > DIFF_THRES) {
+				//ROS_INFO("Creating a feature since diff is %f. Indices: %d, %d", diff, featureIndex, i);
 				float theta1 = msg->angle_min + (msg->angle_increment * featureIndex);
 				float theta2 = msg->angle_min + (msg->angle_increment * i);
 				Feature feature(theta1, ranges[featureIndex], theta2, ranges[i]);
@@ -95,9 +100,6 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
 				features_map.push_back(feature);
 				featureIndex = -1;
 				lookForNegativePeak = true;				
-			} else if (diameter > MAX_DIAMETER) {
-				featureIndex = -1;
-				lookForNegativePeak = true;
 			}
 		}
 		
@@ -105,11 +107,11 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
 	//ROS_INFO("%lu markers to publish...", features_map.size());
 	for (int i = 0; i < features_map.size(); i++) {
 		visualization_msgs::Marker marker;
-		//marker.header.frame_id = msg->header.frame_id;
-		marker.header.frame_id = "base_link";
-    		marker.header.stamp = ros::Time::now();
+		marker.header = msg->header;
+		//marker.header.frame_id = "base_link";
+    		//marker.header.stamp = ros::Time::now();
 		marker.ns = "feature";
-		marker.id = 0;
+		marker.id = i;
 		marker.type = visualization_msgs::Marker::CYLINDER;
 		marker.action = visualization_msgs::Marker::ADD;
 		marker.pose.position.x = features_map[i].getFeatureX();
@@ -119,14 +121,14 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
     		marker.pose.orientation.y = 0.0;
     		marker.pose.orientation.z = 0.0;
     		marker.pose.orientation.w = 1.0;
-		marker.scale.x = 1.0;
-    		marker.scale.y = 1.0;
+		marker.scale.x = 0.4;
+    		marker.scale.y = 0.4;
     		marker.scale.z = 1.0;
 		marker.color.r = 0.0f;
     		marker.color.g = 1.0f;
     		marker.color.b = 0.0f;
     		marker.color.a = 1.0;
-		marker.lifetime = ros::Duration();
+		marker.lifetime = ros::Duration(0.1);
 		feature_pub.publish(marker);
 		//ROS_INFO("I published a marker at (%f, %f)", features_map[i].getFeatureX(), features_map[i].getFeatureY());
 	}
