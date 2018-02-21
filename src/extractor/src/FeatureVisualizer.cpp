@@ -3,6 +3,7 @@
 #include "std_msgs/Float32.h"
 #include "sensor_msgs/LaserScan.h"
 #include <visualization_msgs/Marker.h>
+#include "extractor/featureArray.h"
 #include "extractor/feature.h"
 #include "math.h"
 
@@ -25,6 +26,7 @@ FeatureVisualizer::FeatureVisualizer() {
 
 void FeatureVisualizer::extractCallback(const extractor::featureArray::ConstPtr& msg)
 {
+    std::vector<extractor::feature> features_map = msg->features;
 	//ROS_INFO("%lu markers to publish...", features_map.size());
 	for (int i = 0; i < features_map.size(); i++) {
 		visualization_msgs::Marker marker;
@@ -35,8 +37,8 @@ void FeatureVisualizer::extractCallback(const extractor::featureArray::ConstPtr&
 		marker.id = i;
 		marker.type = visualization_msgs::Marker::CYLINDER;
 		marker.action = visualization_msgs::Marker::ADD;
-		marker.pose.position.x = msg.features[i].position.x;
-		marker.pose.position.y = msg.features[i].position.y;
+		marker.pose.position.x = features_map[i].position.x;
+		marker.pose.position.y = features_map[i].position.y;
 		marker.pose.position.z = 0.0;
 		marker.pose.orientation.x = 0.0;
     		marker.pose.orientation.y = 0.0;
