@@ -1,3 +1,3 @@
 Header header
-geometry_msgs/Pose position
+geometry_msgs/Point position
 float64 diameter
