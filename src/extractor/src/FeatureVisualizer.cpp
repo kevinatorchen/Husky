@@ -53,7 +53,7 @@ void FeatureVisualizer::extractCallback(const extractor::featureArray::ConstPtr&
     		marker.color.a = 1.0;
 		marker.lifetime = ros::Duration(0.1);
 		feature_pub.publish(marker);
-		//ROS_INFO("I published a marker at (%f, %f)", features_map[i].getFeatureX(), features_map[i].getFeatureY());
+		//ROS_INFO("I published a marker at (%f, %f)", features_map[i].position.x, features_map[i].position.y);
 	}
 
   	
@@ -62,7 +62,7 @@ void FeatureVisualizer::extractCallback(const extractor::featureArray::ConstPtr&
 
 int main(int argc, char **argv)
 {
-	ros::init(argc, argv, "extractor");
+	ros::init(argc, argv, "FeatureVisualizer");
 	FeatureVisualizer feature_extractor;
 	ros::spin();
 	return 0;

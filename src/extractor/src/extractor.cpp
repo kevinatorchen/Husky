@@ -113,6 +113,7 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
 
 	//ROS_INFO("%lu markers to publish...", features_map.size());
     extractor::featureArray featureArray;
+    featureArray.header = msg->header;
     for (int i = 0; i < features_map.size(); i++) {
         extractor::feature feature;
         feature.header = msg->header;
