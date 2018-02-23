@@ -3,6 +3,6 @@ prefix=/home/kevin/Documents/catkin_ws/install
 Name: extractor
 Description: Description of extractor
 Version: 0.0.0
-Cflags: 
+Cflags: -I/home/kevin/Documents/catkin_ws/install/include
 Libs: -L/home/kevin/Documents/catkin_ws/install/lib 
-Requires: 
+Requires: message_runtime

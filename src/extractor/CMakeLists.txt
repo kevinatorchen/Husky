@@ -205,5 +205,6 @@ include_directories(
 # catkin_add_nosetests(test)
 
 add_executable(extractor src/extractor.cpp)
-add_executable(featureVisualizer src/FeatureVisualizer.cpp)
+add_executable(FeatureVisualizer src/FeatureVisualizer.cpp)
 target_link_libraries(extractor ${catkin_LIBRARIES})
+target_link_libraries(FeatureVisualizer ${catkin_LIBRARIES})
