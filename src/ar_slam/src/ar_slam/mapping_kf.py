@@ -7,12 +7,82 @@ from numpy.linalg import inv
 from math import pi, sin, cos
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, Pose, PoseStamped
-from ar_mapping.mapping_kf import Landmark
 import tf
 import threading
 
 import rover_driver
-from ar_loc.rover_kinematics import *
+from rover_kinematics import *
+
+
+class Landmark:
+
+    def h(self, X):
+        xr = X[0, 0]
+        yr = X[1, 0]
+        tr = X[2, 0]
+        xl = self.L[0, 0]
+        yl = self.L[1, 0]
+        # use of homogenous coordinates to compute base change
+        return np.mat([
+            [(xl - xr) * cos(tr) + (yl - yr) * sin(tr)],
+            [-(xl - xr) * sin(tr) + (yl - yr) * cos(tr)]
+        ])
+
+    def __init__(self, Z, X, R):
+        # Initialise a landmark based on measurement Z,
+        # current position X and uncertainty R
+        self.L = np.vstack([0, 0])
+        xr = X[0, 0]
+        yr = X[1, 0]
+        tr = X[2, 0]
+        xl = self.L[0, 0]
+        yl = self.L[1, 0]
+        # dfdz = np.mat(
+        #     [
+        #         [-cos(tr), sin(tr), -(yl-yr)*cos(tr)-(xl-xr)*sin(tr)],
+        #         [sin(tr), -cos(tr), (xl-xr)*cos(tr)-(yl-yr)*sin(tr)]
+        #     ]
+        # )
+        self.H = np.mat(
+            [
+                [cos(tr), -sin(tr)],
+                [sin(tr), cos(tr)]
+            ])
+        dfdz = self.H  # in this case h and baseChange has the same Jacobian
+        self.P = dfdz * R * dfdz.T
+        # from wolfram alpha:
+        # https://www.wolframalpha.com/input/?i=jacobian+(+(x-a)*cos(c)-(y-b)*sin(c)+,+(y-b)*cos(c)%2B(x-a)*sin(c)+)
+
+        baseChange = np.mat([
+            [cos(tr), -sin(tr), xr],
+            [sin(tr), cos(tr), yr]
+        ])
+        self.L = baseChange * np.vstack((Z, [1]))
+
+    def update(self, Z, X, R):
+        """
+        :param Z: position of the landmark in the Robot frame
+        :param X: position of the robot in the world frame
+        :param R: covariance matrix of the observation noise
+        :return:
+        """
+        # Update the landmark based on measurement Z,
+        # current position X and uncertainty R
+        tr = X[2, 0]
+        H = np.mat(
+            [
+                [cos(tr), -sin(tr)],
+                [sin(tr), cos(tr)]
+            ])
+        y = Z - self.h(X)
+        S = R + H * self.P * H.T
+        K = self.P * H.T * np.mat(np.linalg.inv(S))
+        self.L = self.L + K * y
+        self.P = (np.mat(np.identity(2)) - K * H) * self.P
+        print ("X:" + str(X))
+        print ("Z:" + str(Z))
+        return self.L
+
 
 
 class MappingKF(RoverKinematics):

@@ -43,6 +43,7 @@ class BubbleSLAM:
         self.lock = threading.Lock()
         self.listener = tf.TransformListener()
         self.broadcaster = tf.TransformBroadcaster()
+        # TODO: remove the alvar marker and replace it with data association node
         self.ar_sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, self.ar_cb)
         self.X = mat(vstack(initial_pose))
         self.P = mat(diag(initial_uncertainty))
