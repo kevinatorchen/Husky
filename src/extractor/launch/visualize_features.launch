@@ -1,6 +1,6 @@
 <launch>
 
-  <node name="extractor" pkg="extractor" type="extractor.cpp" />
-  <node name="viz" pkg="extractor" type="FeatureVisualizer.cpp" />
+  <node name="extractor" pkg="extractor" type="extractor" />
+  <node name="viz" pkg="extractor" type="FeatureVisualizer" />
 
 </launch>
