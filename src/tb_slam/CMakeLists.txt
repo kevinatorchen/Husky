@@ -7,6 +7,7 @@ project(tb_slam)
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   rospy
+  extractor
   sensor_msgs
   std_msgs
   tf
@@ -120,10 +121,10 @@ include_directories(
 ## Install ##
 #############
 
-install(PROGRAMS
-  nodes/rover_mapping.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
+#install(PROGRAMS
+#  nodes/turtle_slam.py
+#  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+#)
 
 install(DIRECTORY src/tb_slam/
   DESTINATION ${CATKIN_PACKAGE_PYTHON_DESTINATION}
@@ -175,3 +176,7 @@ install(DIRECTORY src/tb_slam/
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+
+#add_executable(turtle_slam nodes/turtle_slam.py)
+#target_link_libraries(turtle_slam ${catkin_LIBRARIES})

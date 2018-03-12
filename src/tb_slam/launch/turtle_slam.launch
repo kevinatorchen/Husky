@@ -5,12 +5,16 @@
 	<arg name="cam_image_topic" default="/camera/rgb/image_color" />
         <arg name="cam_info_topic" default="/camera/rgb/camera_info" />	
         <arg name="output_frame" default="/camera_rgb_optical_frame" />
-	<node name="ar_track_alvar" pkg="ar_track_alvar" type="individualMarkersNoKinect" respawn="false" output="screen" args="$(arg marker_size) $(arg max_new_marker_error) $(arg max_track_error) $(arg cam_image_topic) $(arg cam_info_topic) $(arg output_frame)" />
 
+    <param name="use_sim_time" value="true" />
+    <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/lab_2018-01-24-09-51-25_0.bag"/>
 
-    <node pkg="tb_slam" type="turtle_slam_singleids.py" name="slam" output="screen">
+	<node name="extractor" pkg="extractor" type="extractor" />
+	<node name="viz" pkg="extractor" type="FeatureVisualizer" />
+
+    <node pkg="tb_slam" type="turtle_slam.py" name="slam" output="screen">
         <param name="ignore_id" value="False"/>
-        <param name="target_frame" value="/ar_map"/>
+        <param name="target_frame" value="/map"/>
         <param name="odom_frame" value="/odom"/>
         <param name="body_frame" value="/base_link"/>
         <!-- Expected precision of wheel displacement measurement (in meter) -->
