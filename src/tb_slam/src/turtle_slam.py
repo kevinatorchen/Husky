@@ -10,11 +10,14 @@ from geometry_msgs.msg import PointStamped, PoseStamped, Point
 from tf.transformations import euler_from_matrix, decompose_matrix, quaternion_from_euler
 import message_filters
 import threading
-import numpy
 from numpy import mat, vstack, diag, zeros, eye
 from numpy.linalg import inv
 from math import atan2, hypot, pi, cos, sin, fmod, sqrt
 from extractor.msg import featureArray
+
+MAX_MATCH_DIST = 2
+
+MAX_RANGE = 10
 
 
 def norm_angle(x):
@@ -27,9 +30,10 @@ class HuskySLAM:
     - have a working odometry, accessible with ~odom_frame
     - have an accessible feature extraction topic with the /feature topic
     """
+
     def __init__(self):
-        rospy.init_node('bubble_slam')
-        rospy.loginfo("Starting bubble rob slam")
+        rospy.init_node('husky_slam')
+        rospy.loginfo("Starting husky slam")
         self.ignore_id = rospy.get_param("~ignore_id", False)
         self.target_frame = rospy.get_param("~target_frame", "/map")
         self.body_frame = rospy.get_param("~body_frame", "/base_link")
@@ -59,7 +63,8 @@ class HuskySLAM:
         rospy.sleep(1.0)
         now = rospy.Time.now()
         lasttf = rospy.Time(0)
-        self.listener.waitForTransform(self.odom_frame, self.body_frame, now, rospy.Duration(5.0))# rospy.Duration(5.0)
+        self.listener.waitForTransform(self.odom_frame, self.body_frame, now,
+                                       rospy.Duration(5.0))  # rospy.Duration(5.0)
         (trans, rot) = self.listener.lookupTransform(self.odom_frame, self.body_frame, lasttf)
         print('AR_SLAM up and running.\n')
 
@@ -78,9 +83,9 @@ class HuskySLAM:
                   [0, 1, cos(theta) * dt[0] - sin(theta) * dt[1]],
                   [0, 0, 1]])
         Qs = mat(diag([self.position_uncertainty ** 2, self.position_uncertainty ** 2, self.angular_uncertainty ** 2]))
-        P = self.P[0:3, 0:3]
+        P = mat(self.P[0:3, 0:3])
         self.P[0:3, 0:3] = Jx * P * Jx.T + Qs
-        return (self.X, self.P)
+        return self.X, self.P
 
     @staticmethod
     def getRotation(theta):
@@ -89,9 +94,9 @@ class HuskySLAM:
         :return: the X and Y rotation matrix around Z axis.
         """
         R = mat(zeros((2, 2)))
-        R[0, 0] = cos(theta);
+        R[0, 0] = cos(theta)
         R[0, 1] = -sin(theta)
-        R[1, 0] = sin(theta);
+        R[1, 0] = sin(theta)
         R[1, 1] = cos(theta)
         return R
 
@@ -111,10 +116,10 @@ class HuskySLAM:
         Rtheta = self.getRotation(theta)
         Rmtheta = self.getRotation(-theta)
         H = mat(zeros((0, n)))
-        if self.idx.__contains__(id):
+        if id < len(self.idx):
             # this part of the code assume a certain distance between landmarks with same ids, which won't be the case
             l = self.idx[id]
-            print('list for ' + repr(id) + ': ' + repr(list))
+            print('list for ' + str(id) + ': ' + str(l))
             H = mat(zeros((2, n)))
             H[0:2, 0:2] = -Rmtheta
             H[0:2, 2] = mat(vstack(
@@ -124,16 +129,13 @@ class HuskySLAM:
             Zpred = Rmtheta * (self.X[l:l + 2, 0] - self.X[0:2, 0])
             zdiff = Z - Zpred
             zdiff = abs(zdiff[0]) + abs(zdiff[1])
-            if zdiff <= 2:
-                S = H * self.P * H.T + R
-                K = self.P * H.T * inv(S)
-                self.X = self.X + K * (Z - Zpred)
-                self.P = (mat(eye(n)) - K * H) * self.P
-            else:
-                print('id: ' + repr(id) + ', Z diff: ' + repr(zdiff))
-                print('entry ignored: ' + repr(id))
+            S = H * self.P * H.T + R
+            K = self.P * H.T * mat(inv(S))
+            self.X = self.X + K * (Z - Zpred)
+            self.P = (mat(eye(n)) - K * H) * self.P
         else:
             print("no such id: " + str(id))
+            # print("X is :"+repr(self.X[0:6, :]))
         return (self.X, self.P)
 
     def ar_cb(self, f):
@@ -144,13 +146,14 @@ class HuskySLAM:
         """
         for f in f.features:
             lasttf = rospy.Time(0)  # m.header.stamp
-            Z = vstack([f.position.x, f.position.y])
+            Z = mat(vstack([f.position.x, f.position.y]))
             self.lock.acquire()
             if self.ignore_id:
                 self.update_ar(Z, 0, self.ar_precision)
             else:
-                id = self.associate_id(f.position)
-                self.update_ar(Z, id, self.ar_precision)
+                if max(f.position.x, f.position.y) < MAX_RANGE:
+                    id = self.associate_id(f.position)
+                    self.update_ar(Z, id, self.ar_precision)
             self.lock.release()
 
     def associate_id(self, point):
@@ -167,29 +170,32 @@ class HuskySLAM:
         :param point:
         :return:
         """
-        x = mat([[point.x], [point.y]])
+        x_r = mat([[point.x], [point.y]])
         R = self.getRotation(theta=-self.X[2, 0])
-        x = (R * x) + self.X[0:2, 0]
-        min_val = 1
-        min_index = -1
+        x = mat(self.X[0:2, 0]) + (R * x_r)
+        min_val = MAX_MATCH_DIST  # TODO: get this as a parameter
+        min_index = None
         for l in self.idx:
             dist = abs(x[0, 0] - self.X[l + 0, 0]) + abs(x[1, 0] - self.X[l + 1, 0])
             if dist < min_val:
                 min_val = dist
                 min_index = l
-        if min_index == -1:
-            print('created entry for ' + repr(x))
-            print('old X = ' + str(len(self.X)))
-            (n, _) = self.X.shape
+        if min_index is None:
+            # print('created entry for ' + repr(x))
+            # print('old X = ' + str(len(self.X)))
+            (n, width) = self.X.shape
+            # assert width == 1, "shape :"+str(n)+","+str(width)+" is invalid !!!!"
             theta = self.X[2, 0]
             Rtheta = self.getRotation(theta)
             self.idx.append(n)
-            self.X = numpy.concatenate((self.X, x))
+            self.X = mat(vstack((self.X[:, -1], x)))  # TODO: find the cause of this ugly bug (self.X.shape == (n, 2) )
             Pnew = mat(diag([self.ar_precision] * (n + 2)))
             Pnew[0:n, 0:n] = self.P
-            self.P = Pnew
+            self.P = mat(Pnew)
             min_index = len(self.idx) - 1
-            print('new X = ' + str(len(self.X)))
+            # print('new X = ' + str(len(self.X)))
+            print("landmark", n, " added")
+
         return min_index
 
     def run(self):
@@ -222,7 +228,9 @@ class HuskySLAM:
             scale, shear, angles, trans, persp = decompose_matrix(correction_mat)
             self.broadcaster.sendTransform(trans,
                                            quaternion_from_euler(*angles), now, self.odom_frame, self.target_frame)
+            self.lock.acquire()
             self.publish(now)
+            self.lock.release()
             rate.sleep()
 
     def publish(self, timestamp):
@@ -265,7 +273,7 @@ class HuskySLAM:
             marker.header.stamp = timestamp
             marker.header.frame_id = self.target_frame
             marker.ns = "landmark_kf"
-            marker.id = id
+            marker.id = l
             marker.type = Marker.CYLINDER
             marker.action = Marker.ADD
             marker.pose.position.x = self.X[l, 0]
@@ -288,7 +296,7 @@ class HuskySLAM:
             marker.header.stamp = timestamp
             marker.header.frame_id = self.target_frame
             marker.ns = "landmark_kf"
-            marker.id = 1000 + id
+            marker.id = 1000 + l
             marker.type = Marker.TEXT_VIEW_FACING
             marker.action = Marker.ADD
             marker.pose.position.x = self.X[l + 0, 0]
@@ -298,7 +306,7 @@ class HuskySLAM:
             marker.pose.orientation.y = 0
             marker.pose.orientation.z = 1
             marker.pose.orientation.w = 0
-            marker.text = str(id)
+            marker.text = str(l)
             marker.scale.x = 1.0
             marker.scale.y = 1.0
             marker.scale.z = 0.2
