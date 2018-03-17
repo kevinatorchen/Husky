@@ -7,7 +7,7 @@
         <arg name="output_frame" default="/camera_rgb_optical_frame" />
 
     <param name="use_sim_time" value="true" />
-    <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/lab_2018-01-24-09-51-25_0.bag"/>
+    <node pkg="rosbag" type="play" name="player" args="--clock /home/lab_2018-01-24-09-51-25_0.bag"/>
 
 	<node name="extractor" pkg="extractor" type="extractor" />
 	<node name="viz" pkg="extractor" type="FeatureVisualizer" />
