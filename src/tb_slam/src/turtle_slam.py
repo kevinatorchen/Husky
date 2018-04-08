@@ -10,12 +10,14 @@ from geometry_msgs.msg import PointStamped, PoseStamped, Point
 from tf.transformations import euler_from_matrix, decompose_matrix, quaternion_from_euler
 import message_filters
 import threading
-from numpy import mat, vstack, diag, zeros, eye
+from numpy import mat, vstack, diag, zeros, eye, inf
 from numpy.linalg import inv
 from math import atan2, hypot, pi, cos, sin, fmod, sqrt
 from extractor.msg import featureArray
 
-MAX_MATCH_DIST = 2
+from DataAssociator import DataAssociator
+
+MAX_MATCH_DIST = 0.5
 
 MAX_RANGE = 10
 
@@ -32,6 +34,7 @@ class HuskySLAM:
     """
 
     def __init__(self):
+        self.i = 0
         rospy.init_node('husky_slam')
         rospy.loginfo("Starting husky slam")
         self.ignore_id = rospy.get_param("~ignore_id", False)
@@ -53,10 +56,10 @@ class HuskySLAM:
         self.lock = threading.Lock()
         self.listener = tf.TransformListener()
         self.broadcaster = tf.TransformBroadcaster()
-        self.ar_sub = rospy.Subscriber("/feature", featureArray, self.ar_cb)
         self.X = mat(vstack(initial_pose))
         self.P = mat(diag(initial_uncertainty))
         self.idx = []
+        self.dataAssociator = DataAssociator(self)
         self.pose_pub = rospy.Publisher("~pose", PoseStamped, queue_size=1)
         self.marker_pub = rospy.Publisher("~landmarks", MarkerArray, queue_size=1)
 
@@ -66,7 +69,9 @@ class HuskySLAM:
         self.listener.waitForTransform(self.odom_frame, self.body_frame, now,
                                        rospy.Duration(5.0))  # rospy.Duration(5.0)
         (trans, rot) = self.listener.lookupTransform(self.odom_frame, self.body_frame, lasttf)
+        self.ar_sub = rospy.Subscriber("/feature", featureArray, self.ar_cb)
         print('AR_SLAM up and running.\n')
+
 
     def predict(self, dt, dr):
         """
@@ -99,6 +104,17 @@ class HuskySLAM:
         R[1, 0] = sin(theta)
         R[1, 1] = cos(theta)
         return R
+
+    def h(self, Z):
+        """
+        convert from robot frame to world frame
+        :param Z: 2 * 1 matrix of the element
+        :return: coordinate of Z in the world frame
+        """
+        assert Z.shape == (2, 1)
+        result = Z - self.X[0:2, 0]
+        Rtheta = self.getRotation(self.X[2, 0])
+        return Rtheta * result
 
     def update_ar(self, Z, id, uncertainty):
         """
@@ -144,59 +160,70 @@ class HuskySLAM:
         :param f: the feature list
         :return:
         """
-        for f in f.features:
-            lasttf = rospy.Time(0)  # m.header.stamp
-            Z = mat(vstack([f.position.x, f.position.y]))
-            self.lock.acquire()
-            if self.ignore_id:
-                self.update_ar(Z, 0, self.ar_precision)
+        self.i = self.i+1
+        print("step:"+str(self.i))
+        self.lock.acquire()
+        Z = None
+        for feat in f.features:
+            z_r = mat([[feat.position.x], [feat.position.y]])
+            R = self.getRotation(theta=-self.X[2, 0])
+            x = mat(self.X[0:2, 0]) + (R * z_r)
+            if Z is None:
+                Z = x
             else:
-                if max(f.position.x, f.position.y) < MAX_RANGE:
-                    id = self.associate_id(f.position)
-                    self.update_ar(Z, id, self.ar_precision)
-            self.lock.release()
+                Z = vstack((Z, x))
+        # try:
+        best_H = self.dataAssociator.JCBB_wrapper(Z)
+        for row in best_H:
+            if row[0, 0] != -1:
+                Z_landmark = Z[row[0, 1]:row[0, 1]+2]
+                id_landmark = row[0, 0]
+                self.update_ar(Z_landmark, id_landmark, self.ar_precision)
+            else:
+                self.add_landmark_to_map(Z[row[0, 1]:row[0, 1]+2])
+        # except:
+        #     print("******************************************")
+        #     print("some error happend with following data:")
+        #     print("X"+str(self.X))
+        #     print("Z"+str(Z))
+        #     print("******************************************")
 
-    def associate_id(self, point):
-        """
-        associate measurment to an id in the map
-        :param point: coordinate of the landmark to associate in the robot frame
-        :return: the id in the map of the landmark
-        """
-        return self.associate_id_nearest_neighbor(point)
+        self.lock.release()
+        # for f in f.features:
+        #     lasttf = rospy.Time(0)  # m.header.stamp
+        #     Z = mat(vstack([f.position.x, f.position.y]))
+        #     self.lock.acquire()
+        #     if self.ignore_id:
+        #         self.update_ar(Z, 0, self.ar_precision)
+        #     else:
+        #         if max(f.position.x, f.position.y) < MAX_RANGE:
+        #             id = self.associate_id(f.position)
+        #             self.update_ar(Z, id, self.ar_precision)
+        #     self.lock.release()
 
-    def associate_id_nearest_neighbor(self, point):
-        """
-        quick and dirty data association
-        :param point:
-        :return:
-        """
-        x_r = mat([[point.x], [point.y]])
-        R = self.getRotation(theta=-self.X[2, 0])
-        x = mat(self.X[0:2, 0]) + (R * x_r)
-        min_val = MAX_MATCH_DIST  # TODO: get this as a parameter
-        min_index = None
-        for l in self.idx:
-            dist = abs(x[0, 0] - self.X[l + 0, 0]) + abs(x[1, 0] - self.X[l + 1, 0])
-            if dist < min_val:
-                min_val = dist
-                min_index = l
-        if min_index is None:
-            # print('created entry for ' + repr(x))
-            # print('old X = ' + str(len(self.X)))
-            (n, width) = self.X.shape
-            # assert width == 1, "shape :"+str(n)+","+str(width)+" is invalid !!!!"
-            theta = self.X[2, 0]
-            Rtheta = self.getRotation(theta)
-            self.idx.append(n)
-            self.X = mat(vstack((self.X[:, -1], x)))  # TODO: find the cause of this ugly bug (self.X.shape == (n, 2) )
-            Pnew = mat(diag([self.ar_precision] * (n + 2)))
-            Pnew[0:n, 0:n] = self.P
-            self.P = mat(Pnew)
-            min_index = len(self.idx) - 1
-            # print('new X = ' + str(len(self.X)))
-            print("landmark", n, " added")
+    def add_landmark_to_map(self, Y_l):
+        # print('created entry for ' + repr(x))
+        # print('old X = ' + str(len(self.X)))
+        (n, width) = self.X.shape
+        assert width == 1, "shape :"+str(n)+","+str(width)+" is invalid !!!!"
+        theta = self.X[2, 0]
+        Rtheta = self.getRotation(theta)
+        self.idx.append(n)
+        self.X = mat(vstack(
+            (self.X[:, -1], Y_l[:, 0])))  # TODO: find the cause of this ugly bug (self.X.shape == (n, 2) )
+        Pnew = mat(diag([self.ar_precision] * (n + 2)))
+        Pnew[0:n, 0:n] = self.P
+        self.P = mat(Pnew)
+        # print('new X = ' + str(len(self.X)))
+        print("landmark", n, " added")
 
-        return min_index
+    def get_landmark_from_id(self, id):
+        """
+        return the x and y coordinates of landmark knowing it's id
+        :param id: the id of the landmark in the map
+        :return: x and y of the landmark in the world frame
+        """
+        return self.X[id:id+2, 0]
 
     def run(self):
         """
