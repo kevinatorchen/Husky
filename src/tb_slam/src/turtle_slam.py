@@ -113,14 +113,14 @@ class HuskySLAM:
         """
         assert Z.shape == (2, 1)
         result = Z - self.X[0:2, 0]
-        Rtheta = self.getRotation(self.X[2, 0])
-        return Rtheta * result
+        mRtheta = self.getRotation(-self.X[2, 0])
+        return mRtheta * result
 
     def update_ar(self, Z, id, uncertainty):
         """
         the update step of the EKF
         :param Z: observation vector [[x],[y]] of the landmark in the robot frame
-        :param id: the id of the observed landmark
+        :param id: location of landmark in self.X
         :param uncertainty: of the observation
         :return:
         """
@@ -129,26 +129,24 @@ class HuskySLAM:
         (n, _) = self.X.shape
         R = mat(diag([uncertainty, uncertainty]))
         theta = self.X[2, 0]
-        Rtheta = self.getRotation(theta)
         Rmtheta = self.getRotation(-theta)
         H = mat(zeros((0, n)))
-        if id < len(self.idx):
-            # this part of the code assume a certain distance between landmarks with same ids, which won't be the case
-            l = self.idx[id]
-            print('list for ' + str(id) + ': ' + str(l))
+        if self.idx.__contains__(id):
             H = mat(zeros((2, n)))
             H[0:2, 0:2] = -Rmtheta
             H[0:2, 2] = mat(vstack(
-                [-(self.X[l + 0, 0] - self.X[0, 0]) * sin(theta) + (self.X[l + 1, 0] - self.X[1, 0]) * cos(theta),
-                 (-self.X[l + 0, 0] - self.X[0, 0]) * cos(theta) - (self.X[l + 1, 0] - self.X[1, 0]) * sin(theta)]))
-            H[0:2, l:l + 2] = Rmtheta
-            Zpred = Rmtheta * (self.X[l:l + 2, 0] - self.X[0:2, 0])
-            zdiff = Z - Zpred
-            zdiff = abs(zdiff[0]) + abs(zdiff[1])
+                [-(self.X[id + 0, 0] - self.X[0, 0]) * sin(theta) + (self.X[id + 1, 0] - self.X[1, 0]) * cos(theta),
+                 -(self.X[id + 0, 0] - self.X[0, 0]) * cos(theta) - (self.X[id + 1, 0] - self.X[1, 0]) * sin(theta)]))
+            H[0:2, id:id + 2] = Rmtheta
+            Zpred = Rmtheta * (self.X[id:id + 2, 0] - self.X[0:2, 0])
             S = H * self.P * H.T + R
-            K = self.P * H.T * mat(inv(S))
-            self.X = self.X + K * (Z - Zpred)
-            self.P = (mat(eye(n)) - K * H) * self.P
+            K = self.P * H.T * inv(S)
+            zdiff = Z - Zpred
+            if abs(zdiff[0]) + abs(zdiff[1]) <= 10:
+                self.X = self.X + K * (Z - Zpred)
+                self.P = (mat(eye(n)) - K * H) * self.P
+            else:
+                print('id: ' + repr(id) + ' error is too large.')
         else:
             print("no such id: " + str(id))
             # print("X is :"+repr(self.X[0:6, :]))
@@ -163,54 +161,45 @@ class HuskySLAM:
         self.i = self.i+1
         print("step:"+str(self.i))
         self.lock.acquire()
+        Z_w = None
         Z = None
         for feat in f.features:
-            z_r = mat([[feat.position.x], [feat.position.y]])
-            R = self.getRotation(theta=-self.X[2, 0])
-            x = mat(self.X[0:2, 0]) + (R * z_r)
-            if Z is None:
-                Z = x
-            else:
-                Z = vstack((Z, x))
-        # try:
-        best_H = self.dataAssociator.JCBB_wrapper(Z)
+            if (feat.diameter < 0.7) and (abs(feat.position.x) < MAX_RANGE) and (abs(feat.position.y) < MAX_RANGE):
+                z_r = mat([[feat.position.x], [-feat.position.y]])
+                R = self.getRotation(theta=self.X[2, 0])
+                x = mat(self.X[0:2, 0]) + (R * z_r)
+                if Z_w is None:
+                    Z_w = x
+                    Z = z_r
+                else:
+                    Z_w = vstack((Z_w, x))
+                    Z = vstack((Z, z_r))
+        if Z is not None:
+            best_H = self.dataAssociator.JCBB_wrapper(Z)
+        else:
+            best_H = []
+        print("best H"+str(best_H))
+        # print("Z_w"+str(Z_w))
+        # print("current X" + repr(self.X))
         for row in best_H:
             if row[0, 0] != -1:
                 Z_landmark = Z[row[0, 1]:row[0, 1]+2]
                 id_landmark = row[0, 0]
                 self.update_ar(Z_landmark, id_landmark, self.ar_precision)
             else:
-                self.add_landmark_to_map(Z[row[0, 1]:row[0, 1]+2])
-        # except:
-        #     print("******************************************")
-        #     print("some error happend with following data:")
-        #     print("X"+str(self.X))
-        #     print("Z"+str(Z))
-        #     print("******************************************")
-
+                print(row)
+                self.add_landmark_to_map(Z_w[row[0, 1]:row[0, 1]+2])
         self.lock.release()
-        # for f in f.features:
-        #     lasttf = rospy.Time(0)  # m.header.stamp
-        #     Z = mat(vstack([f.position.x, f.position.y]))
-        #     self.lock.acquire()
-        #     if self.ignore_id:
-        #         self.update_ar(Z, 0, self.ar_precision)
-        #     else:
-        #         if max(f.position.x, f.position.y) < MAX_RANGE:
-        #             id = self.associate_id(f.position)
-        #             self.update_ar(Z, id, self.ar_precision)
-        #     self.lock.release()
+
 
     def add_landmark_to_map(self, Y_l):
         # print('created entry for ' + repr(x))
         # print('old X = ' + str(len(self.X)))
         (n, width) = self.X.shape
         assert width == 1, "shape :"+str(n)+","+str(width)+" is invalid !!!!"
-        theta = self.X[2, 0]
-        Rtheta = self.getRotation(theta)
         self.idx.append(n)
         self.X = mat(vstack(
-            (self.X[:, -1], Y_l[:, 0])))  # TODO: find the cause of this ugly bug (self.X.shape == (n, 2) )
+            (self.X[:, 0], Y_l[:, 0])))
         Pnew = mat(diag([self.ar_precision] * (n + 2)))
         Pnew[0:n, 0:n] = self.P
         self.P = mat(Pnew)
@@ -310,8 +299,8 @@ class HuskySLAM:
             marker.pose.orientation.y = 0
             marker.pose.orientation.z = 1
             marker.pose.orientation.w = 0
-            marker.scale.x = 0.2  # 3*sqrt(self.P[l,l])
-            marker.scale.y = 0.2  # 3*sqrt(self.P[l+1,l+1])
+            marker.scale.x = 1  # 3*sqrt(self.P[l,l])
+            marker.scale.y = 1  # 3*sqrt(self.P[l+1,l+1])
             marker.scale.z = 0.1
             marker.color.a = 1.0
             marker.color.r = 0.25

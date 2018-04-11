@@ -28,5 +28,4 @@
         <param name="initial_theta" value="0.0"/>
     </node>
 
-
 </launch>
