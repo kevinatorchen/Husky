@@ -35,6 +35,7 @@ class HuskySLAM:
 
     def __init__(self):
         self.i = 0
+        self.seen_count = {}
         rospy.init_node('husky_slam')
         rospy.loginfo("Starting husky slam")
         self.ignore_id = rospy.get_param("~ignore_id", False)
@@ -160,6 +161,11 @@ class HuskySLAM:
         """
         self.i = self.i+1
         print("step:"+str(self.i))
+        if fmod(self.i, 10) == 0:
+            for k in self.seen_count.keys():
+                if self.seen_count[k] < 5:
+                    self.seen_count.pop(k)
+                    self.idx.remove(k)
         self.lock.acquire()
         Z_w = None
         Z = None
@@ -185,6 +191,7 @@ class HuskySLAM:
             if row[0, 0] != -1:
                 Z_landmark = Z[row[0, 1]:row[0, 1]+2]
                 id_landmark = row[0, 0]
+                self.seen_count[id_landmark] += 1
                 self.update_ar(Z_landmark, id_landmark, self.ar_precision)
             else:
                 print(row)
@@ -198,6 +205,7 @@ class HuskySLAM:
         (n, width) = self.X.shape
         assert width == 1, "shape :"+str(n)+","+str(width)+" is invalid !!!!"
         self.idx.append(n)
+        self.seen_count[n] = 0
         self.X = mat(vstack(
             (self.X[:, 0], Y_l[:, 0])))
         Pnew = mat(diag([self.ar_precision] * (n + 2)))

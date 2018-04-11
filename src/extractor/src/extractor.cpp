@@ -76,7 +76,7 @@ FeatureExtractor::FeatureExtractor() {
 void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& msg)
 {
     count++;
-    if (count != 5) {
+    if (count != 10) {
         return;
     }
 	std::vector<float> ranges = msg->ranges;
