@@ -87,8 +87,17 @@ class DataAssociator:
         :param Z: measurment made
         :return: list of id_Z and id_X pairs
         """
-        idX = self.slamInstance.idx[:]
+        idX = []
         idZ = list(range(0, len(Z) - 1, 2))
+        X = None
+        for idx in self.slamInstance.idx:
+            landmark = self.slamInstance.h(self.slamInstance.X[idx:idx+2, 0])
+            if abs(landmark[0, 0] < MAX_RANGE) and abs(landmark[1, 0] < MAX_RANGE):
+                if X is None:
+                    X = np.mat(landmark)
+                else:
+                    X = np.vstack((X, landmark))
+                idX.append(idx)
         (best_H, best_score) = self.JCBB(None, idZ, idX, Z, np.inf, [])
         return best_H
 
