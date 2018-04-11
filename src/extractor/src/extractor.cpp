@@ -62,17 +62,23 @@ class FeatureExtractor {
 		ros::NodeHandle n;
 		ros::Publisher feature_pub;
 		ros::Subscriber sub;
+		int count;
 };
 
 
 FeatureExtractor::FeatureExtractor() {
 	sub = n.subscribe("/lidar/scan", 1000, &FeatureExtractor::extractCallback, this);
 	feature_pub = n.advertise<extractor::featureArray>("/feature", 1000);//n.advertise<visualization_msgs::Marker>("/feature", 1000);
+	count = 0 ;
 }
 
 
 void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& msg)
 {
+    count++;
+    if (count != 5) {
+        return;
+    }
 	std::vector<float> ranges = msg->ranges;
 	for (int i = 0; i < ranges.size(); i++) {
 		if (ranges[i] == 0 || ranges[i] > MAX_DIST) {
@@ -124,7 +130,7 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
         featureArray.features.push_back(feature);
 	}
     feature_pub.publish(featureArray);
-
+    count = 0;
 
 
 }

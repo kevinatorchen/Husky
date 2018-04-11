@@ -44,8 +44,8 @@ void FeatureVisualizer::extractCallback(const extractor::featureArray::ConstPtr&
     		marker.pose.orientation.y = 0.0;
     		marker.pose.orientation.z = 0.0;
     		marker.pose.orientation.w = 1.0;
-		marker.scale.x = 0.4;
-    		marker.scale.y = 0.4;
+		marker.scale.x = features_map[i].diameter ;
+    		marker.scale.y = features_map[i].diameter;
     		marker.scale.z = 1.0;
 		marker.color.r = 0.0f;
     		marker.color.g = 1.0f;
