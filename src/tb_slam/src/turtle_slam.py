@@ -3,19 +3,20 @@ import roslib
 
 import rospy
 import tf
-from sensor_msgs.msg import JointState
-from geometry_msgs.msg import Twist
+# from sensor_msgs.msg import JointState
+# from geometry_msgs.msg import Twist
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import PointStamped, PoseStamped, Point
 from tf.transformations import euler_from_matrix, decompose_matrix, quaternion_from_euler
-import message_filters
+# import message_filters
 import threading
-from numpy import mat, vstack, diag, zeros, eye, inf
+from numpy import mat, vstack, diag, zeros, eye, inf, matrix
 from numpy.linalg import inv
 from math import atan2, hypot, pi, cos, sin, fmod, sqrt
 from extractor.msg import featureArray
-
+#
 from DataAssociator import DataAssociator
+import pickle as pkl
 
 MAX_MATCH_DIST = 0.5
 
@@ -33,9 +34,19 @@ class HuskySLAM:
     - have an accessible feature extraction topic with the /feature topic
     """
 
-    def __init__(self):
+    def __init__(self, debug=False):
         self.i = 0
         self.seen_count = {}
+        if debug:
+            self.X = pkl.load(open("X.pkl"))
+            self.P = pkl.load(open("P.pkl"))
+            self.idx = pkl.load(open("idx.pkl"))
+            Z = pkl.load(open("Z.pkl"))
+            self.seen_count = pkl.load(open("seen_count.pkl"))
+            self.dataAssociator = DataAssociator(self)
+            print(self.dataAssociator.JCBB_wrapper(Z))
+            return
+
         rospy.init_node('husky_slam')
         rospy.loginfo("Starting husky slam")
         self.ignore_id = rospy.get_param("~ignore_id", False)
@@ -59,6 +70,7 @@ class HuskySLAM:
         self.broadcaster = tf.TransformBroadcaster()
         self.X = mat(vstack(initial_pose))
         self.P = mat(diag(initial_uncertainty))
+        self.P[2, 2] = 4 * self.P[2, 2]
         self.idx = []
         self.dataAssociator = DataAssociator(self)
         self.pose_pub = rospy.Publisher("~pose", PoseStamped, queue_size=1)
@@ -72,7 +84,6 @@ class HuskySLAM:
         (trans, rot) = self.listener.lookupTransform(self.odom_frame, self.body_frame, lasttf)
         self.ar_sub = rospy.Subscriber("/feature", featureArray, self.ar_cb)
         print('AR_SLAM up and running.\n')
-
 
     def predict(self, dt, dr):
         """
@@ -117,6 +128,15 @@ class HuskySLAM:
         mRtheta = self.getRotation(-self.X[2, 0])
         return mRtheta * result
 
+    def get_h(self):
+        """
+        return the h function respecting to the current state
+        :return:
+        """
+        X = matrix(self.X[0:2, 0])
+        theta = self.X[2, 0]
+        return lambda Z: HuskySLAM.getRotation(-theta) * (Z - X)
+
     def update_ar(self, Z, id, uncertainty):
         """
         the update step of the EKF
@@ -159,18 +179,20 @@ class HuskySLAM:
         :param f: the feature list
         :return:
         """
-        self.i = self.i+1
-        print("step:"+str(self.i))
+        self.i = self.i + 1
+        print("step:" + str(self.i))
+        # every 10 steps remove sporadic landmarks an consolidate map
+        self.lock.acquire()
         if fmod(self.i, 10) == 0:
             for k in self.seen_count.keys():
                 if self.seen_count[k] < 5:
                     self.seen_count.pop(k)
                     self.idx.remove(k)
-        self.lock.acquire()
+            self.consolidate_state()
         Z_w = None
         Z = None
         for feat in f.features:
-            if (feat.diameter < 0.7) and (abs(feat.position.x) < MAX_RANGE) and (abs(feat.position.y) < MAX_RANGE):
+            if (feat.diameter > 0.03) and (feat.diameter < 0.4) and (abs(feat.position.x) < MAX_RANGE) and (abs(feat.position.y) < MAX_RANGE):
                 z_r = mat([[feat.position.x], [-feat.position.y]])
                 R = self.getRotation(theta=self.X[2, 0])
                 x = mat(self.X[0:2, 0]) + (R * z_r)
@@ -180,30 +202,35 @@ class HuskySLAM:
                 else:
                     Z_w = vstack((Z_w, x))
                     Z = vstack((Z, z_r))
+        # if self.i >= 1001:
+        #     self.X.dump("X.pkl")
+        #     self.P.dump("P.pkl")
+        #     Z.dump("Z.pkl")
+        #     pkl.dump(self.idx, open("idx.pkl", 'w'))
+        #     pkl.dump(self.seen_count, open("seen_count.pkl", 'w'))
         if Z is not None:
             best_H = self.dataAssociator.JCBB_wrapper(Z)
         else:
             best_H = []
-        print("best H"+str(best_H))
+        print("best H" + str(best_H))
         # print("Z_w"+str(Z_w))
         # print("current X" + repr(self.X))
         for row in best_H:
             if row[0, 0] != -1:
-                Z_landmark = Z[row[0, 1]:row[0, 1]+2]
+                Z_landmark = Z[row[0, 1]:row[0, 1] + 2]
                 id_landmark = row[0, 0]
                 self.seen_count[id_landmark] += 1
                 self.update_ar(Z_landmark, id_landmark, self.ar_precision)
             else:
                 print(row)
-                self.add_landmark_to_map(Z_w[row[0, 1]:row[0, 1]+2])
+                self.add_landmark_to_map(Z_w[row[0, 1]:row[0, 1] + 2])
         self.lock.release()
-
 
     def add_landmark_to_map(self, Y_l):
         # print('created entry for ' + repr(x))
         # print('old X = ' + str(len(self.X)))
         (n, width) = self.X.shape
-        assert width == 1, "shape :"+str(n)+","+str(width)+" is invalid !!!!"
+        assert width == 1, "shape :" + str(n) + "," + str(width) + " is invalid !!!!"
         self.idx.append(n)
         self.seen_count[n] = 0
         self.X = mat(vstack(
@@ -214,13 +241,39 @@ class HuskySLAM:
         # print('new X = ' + str(len(self.X)))
         print("landmark", n, " added")
 
+    def consolidate_state(self):
+        """
+        remove unused landmarks from the map, keeping only elements stored in idx
+        :return:
+        """
+        n = 3+2*len(self.idx)
+        newX = mat(zeros((n, 1)))
+        newP = mat(zeros((n, n)))
+        newX[0:3, 0] = self.X[0:3, 0]
+        newP[0:3, 0:3] = self.P[0:3, 0:3]
+        newidx = []
+        newcounts = {}
+        i = 3
+        for id in self.idx:
+            newX[i:i+2, 0] = self.X[id:id+2, 0]
+            newP[i:i+2, i:i+2] = self.P[id:id+2, id:id+2]
+            newP[i:i+2, 0:3] = self.P[id:id+2, 0:3]
+            newP[0:3, i:i + 2] = self.P[0:3, id:id + 2]
+            newidx.append(i)
+            newcounts[i] = self.seen_count[id]
+            i+=2
+        self.X = newX
+        self.P = newP
+        self.idx = newidx
+        self.seen_count = newcounts
+
     def get_landmark_from_id(self, id):
         """
         return the x and y coordinates of landmark knowing it's id
         :param id: the id of the landmark in the map
         :return: x and y of the landmark in the world frame
         """
-        return self.X[id:id+2, 0]
+        return self.X[id:id + 2, 0]
 
     def run(self):
         """
@@ -346,3 +399,4 @@ class HuskySLAM:
 if __name__ == "__main__":
     demo = HuskySLAM()
     demo.run()
+

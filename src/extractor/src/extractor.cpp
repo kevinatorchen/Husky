@@ -7,8 +7,8 @@
 #include "math.h"
 
 const float MAX_DIST = 40.0;
-const float DIFF_THRES = 3.0;
-const float MAX_DIAMETER = 2.0;
+const float DIFF_THRES = 15.0;
+const float MAX_DIAMETER = 0.40;
 
 //Uses law of cosines.
 float computeDiameter(float side1, float side2, float angle) {
