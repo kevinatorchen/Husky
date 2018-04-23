@@ -1,6 +1,0 @@
-<launch>
-
-  <node name="extractor" pkg="extractor" type="extractor" />
-  <node name="viz" pkg="extractor" type="FeatureVisualizer" />
-
-</launch>

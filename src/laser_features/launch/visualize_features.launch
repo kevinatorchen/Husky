@@ -1,0 +1,6 @@
+<launch>
+
+  <node name="laser_features" pkg="laser_features" type="laser_features" />
+  <node name="viz" pkg="laser_features" type="FeatureVisualizer" />
+
+</launch>

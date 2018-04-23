@@ -3,15 +3,15 @@
 #include "std_msgs/Float32.h"
 #include "sensor_msgs/LaserScan.h"
 #include <visualization_msgs/Marker.h>
-#include "extractor/featureArray.h"
-#include "extractor/feature.h"
+#include "laser_features/featureArray.h"
+#include "laser_features/feature.h"
 #include "math.h"
 
 class FeatureVisualizer {
 	public:
 		FeatureVisualizer();
 	private:
-		void extractCallback(const extractor::featureArray::ConstPtr& msg);
+		void extractCallback(const laser_features::featureArray::ConstPtr& msg);
 		ros::NodeHandle n;
 		ros::Publisher feature_pub;
 		ros::Subscriber sub;
@@ -24,9 +24,9 @@ FeatureVisualizer::FeatureVisualizer() {
 }
 
 
-void FeatureVisualizer::extractCallback(const extractor::featureArray::ConstPtr& msg)
+void FeatureVisualizer::extractCallback(const laser_features::featureArray::ConstPtr& msg)
 {
-    std::vector<extractor::feature> features_map = msg->features;
+    std::vector<laser_features::feature> features_map = msg->features;
 	//ROS_INFO("%lu markers to publish...", features_map.size());
 	for (int i = 0; i < features_map.size(); i++) {
 		visualization_msgs::Marker marker;
@@ -63,7 +63,7 @@ void FeatureVisualizer::extractCallback(const extractor::featureArray::ConstPtr&
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "FeatureVisualizer");
-	FeatureVisualizer feature_extractor;
+	FeatureVisualizer feature_laser_features;
 	ros::spin();
 	return 0;
 }

@@ -3,7 +3,7 @@
 #include "std_msgs/Float32.h"
 #include "sensor_msgs/LaserScan.h"
 #include <visualization_msgs/Marker.h>
-#include "extractor/featureArray.h"
+#include "laser_features/featureArray.h"
 #include "math.h"
 
 const float MAX_DIST = 40.0;
@@ -54,9 +54,9 @@ float Feature::getDiameter() {
     return diameter;
 }
 
-class FeatureExtractor {
+class LaserFeatures {
 	public:
-		FeatureExtractor();
+		LaserFeatures();
 	private:
 		void extractCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
 		ros::NodeHandle n;
@@ -66,14 +66,14 @@ class FeatureExtractor {
 };
 
 
-FeatureExtractor::FeatureExtractor() {
-	sub = n.subscribe("/lidar/scan", 1000, &FeatureExtractor::extractCallback, this);
-	feature_pub = n.advertise<extractor::featureArray>("/feature", 1000);//n.advertise<visualization_msgs::Marker>("/feature", 1000);
+LaserFeatures::LaserFeatures() {
+	sub = n.subscribe("/lidar/scan", 1000, &LaserFeatures::extractCallback, this);
+	feature_pub = n.advertise<laser_features::featureArray>("/feature", 1000);//n.advertise<visualization_msgs::Marker>("/feature", 1000);
 	count = 0 ;
 }
 
 
-void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& msg)
+void LaserFeatures::extractCallback(const sensor_msgs::LaserScan::ConstPtr& msg)
 {
     count++;
     if (count != 10) {
@@ -118,10 +118,10 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
 	}
 
 	//ROS_INFO("%lu markers to publish...", features_map.size());
-    extractor::featureArray featureArray;
+    laser_features::featureArray featureArray;
     featureArray.header = msg->header;
     for (int i = 0; i < features_map.size(); i++) {
-        extractor::feature feature;
+        laser_features::feature feature;
         feature.header = msg->header;
         feature.position.x = features_map[i].getFeatureX();
         feature.position.y = features_map[i].getFeatureY();
@@ -137,8 +137,8 @@ void FeatureExtractor::extractCallback(const sensor_msgs::LaserScan::ConstPtr& m
 
 int main(int argc, char **argv)
 {
-	ros::init(argc, argv, "extractor");
-	FeatureExtractor feature_extractor;
+	ros::init(argc, argv, "laser_features");
+	LaserFeatures feature_laser_features;
 	ros::spin();
 	return 0;
 }

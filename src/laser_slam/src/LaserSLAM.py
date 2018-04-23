@@ -13,7 +13,7 @@ import threading
 from numpy import mat, vstack, diag, zeros, eye, inf, matrix
 from numpy.linalg import inv
 from math import atan2, hypot, pi, cos, sin, fmod, sqrt
-from extractor.msg import featureArray
+from laser_features.msg import featureArray
 #
 from DataAssociator import DataAssociator
 import pickle as pkl
@@ -27,7 +27,7 @@ def norm_angle(x):
     return fmod(x + pi, 2 * pi) - pi
 
 
-class HuskySLAM:
+class LaserSLAM:
     """
     class that hold the SLAM node for a robot. To work it must:
     - have a working odometry, accessible with ~odom_frame
@@ -135,7 +135,7 @@ class HuskySLAM:
         """
         X = matrix(self.X[0:2, 0])
         theta = self.X[2, 0]
-        return lambda Z: HuskySLAM.getRotation(-theta) * (Z - X)
+        return lambda Z: LaserSLAM.getRotation(-theta) * (Z - X)
 
     def update_ar(self, Z, id, uncertainty):
         """
@@ -397,6 +397,6 @@ class HuskySLAM:
 
 
 if __name__ == "__main__":
-    demo = HuskySLAM()
+    demo = LaserSLAM()
     demo.run()
 

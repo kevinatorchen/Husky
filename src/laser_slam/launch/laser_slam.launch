@@ -6,13 +6,10 @@
         <arg name="cam_info_topic" default="/camera/rgb/camera_info" />	
         <arg name="output_frame" default="/camera_rgb_optical_frame" />
 
-    <param name="use_sim_time" value="true" />
-    <node pkg="rosbag" type="play" name="player" args="--clock /home/lab_2018-01-24-09-51-25_0.bag"/>
+	<node name="laser_features" pkg="laser_features" type="laser_features" />
+	<node name="viz" pkg="laser_features" type="FeatureVisualizer" />
 
-	<node name="extractor" pkg="extractor" type="extractor" />
-	<node name="viz" pkg="extractor" type="FeatureVisualizer" />
-
-    <node pkg="tb_slam" type="turtle_slam.py" name="slam" output="screen">
+    <node pkg="laser_slam" type="LaserSLAM.py" name="slam" output="screen">
         <param name="ignore_id" value="False"/>
         <param name="target_frame" value="/map"/>
         <param name="odom_frame" value="/odom"/>

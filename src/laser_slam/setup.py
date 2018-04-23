@@ -5,7 +5,7 @@ from catkin_pkg.python_setup import generate_distutils_setup
 
 d = generate_distutils_setup(
     install_requires=['rospy'],
-   packages=['ar_slam_base'],
+   packages=['laser_slam'],
    package_dir={'': 'src'}
     )
 

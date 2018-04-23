@@ -10,8 +10,8 @@ MIN_RANGE = 0
 
 class DataAssociator:
 
-    def __init__(self, huskySlam):
-        self.slamInstance = huskySlam
+    def __init__(self, laserSLAM):
+        self.slamInstance = laserSLAM
 
     @staticmethod
     def joint_compat_score(hypothesis, Z, X, d_z, d_x):
